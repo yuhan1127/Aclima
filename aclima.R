@@ -12,26 +12,23 @@ census_api_key("ea4f942d5bb621e8b0f85b5bacdc4864cbd0ef26",install=TRUE)
 readRenviron("~/.Renviron")
 options(tigris_use_cache = TRUE)
 
-# aclima
+# ACLIMA DATA
 aclima<-fread("Aclima_0114.csv")
 aclima_no2<-aclima[modality=="no2"&metric=="mean"]
 aclima_remove<-aclima_no2[aclima_no2$value<100&aclima_no2$value>0,]
 
 ## check negative value
 nrow(aclima_no2[aclima_no2$value<0,])
-
 ## check outlier
 summary(aclima_no2$value)
 aclima_remove<-aclima_no2[aclima_no2$value<50&aclima_no2$value>0,]
-
-## heat map
-spplot(aclima_remove, "value",colorkey = TRUE)
-
 ## convert to spatial data frame
-coordinates(aclima_remove)<-c("lon","lat")
+coordiates(aclima_remove)<-c("lon","lat")
+## heatmap
 spplot(aclima_remove, "value", colorkey = TRUE)
 
-# census
+
+# ACS DATA
 alameda<- get_acs(state = "CA", county = "Alameda", geography = "block group",
                   variables = "B19013_001",geometry = TRUE)
 ## check block group level range
@@ -40,10 +37,10 @@ block<-as.numeric(str_sub(alameda$NAME,13,13))
 tract<-as.numeric(str_sub(alameda$NAME,29,32))
 ## check block group 0, census tract 9900 
 alameda_block0<-subset(alameda,str_sub(NAME,13,13)==0)
-##### no estimate and no geometry
+##Note: no estimate and no geometry
 ##check census tract 9819,9820,9832,9900
 alameda_tract<-subset(alameda,str_sub(NAME,29,32) %in% c("9819","9820","9832","9900"))
-##### no estimate and geometry for census tract 9980
+##Note: no estimate and geometry for census tract 9980
 
 ## Set up palette
 pal1 <- brewer.pal(7, "OrRd") 
@@ -55,13 +52,14 @@ aclima_coord= st_set_crs(aclima_coord, 4326)
 plot(aclima_coord["value"], add=TRUE,breaks = "quantile", nbreaks = 7,
      pal=pal2, reset=FALSE, pch=16, cex=0.3)
 
-# map air pollutant coordinate to block group (WGS84->NAD83)
+
+# DATA MAPPING: Map air pollutant coordinate to block group (WGS84->NAD83)
 alameda_4326<- st_transform(alameda,crs=4326)
 int <- sf::st_intersects(aclima_coord, alameda_4326)
+
 ##check missing value
 identical(length(int),length(unlist(int)))
-### some coordinates can not be mapped to certain block group (around 124 points,0.13%)
-
+##Note: some coordinates can not be mapped to certain block group (around 124 points,0.13%)
 ## locate coordinates that failed to find their correspond block group
 ind<-sapply(int,FUN=function(x){
   length(x)==0
@@ -78,7 +76,7 @@ plot(aclima_coord_missing["value"],breaks = "quantile", nbreaks = 7,
 ##    ***distance metric****
 ## 2) easy to map coordinates to big block group. (like livermore area)
 
-
+# DATA MERGING: merge aclima and acs
 aclima_merge<-aclima_coord[!ind,]
 aclima_merge$geoid <- as.character(alameda_4326$GEOID[unlist(int)])
 data_merge_income<-merge(as.data.frame(aclima_merge),
@@ -89,7 +87,7 @@ table(is.na(data_merge_income$estimate))
 table(data_merge_income$geoid[is.na(data_merge_income$estimate)])
 missing_geoid<-data_merge_income$geoid[is.na(data_merge_income$estimate)]
 alameda%>%filter(GEOID %in% missing_geoid)%>%group_by(estimate)%>%count()
-## missingness is from missing demographics of acs data in the first place
+##Note: missingness is from missing demographics estimates of acs data in the first place
 
 ## only keep observation without estimate missingness 
 data_merge_income<-subset(data_merge_income,!is.na(estimate))
@@ -109,8 +107,8 @@ st_geometry(data_merge_income) <- "geometry.x"
 #   add them into aclima data as predictor columns, like block group column (index=int) @
 #   sol1) use geoid as index to merge aclima with other acs data @
 #   sol2) use int, if the order of block group index of acs datasets are the same
-#2.log transformed
-#3. fit linear regression and check residual, expect spatial pattern
+#2.log transformed @
+#3. fit linear regression and check residual, expect spatial pattern @
 #4. variagram
 #5. spnngp
 #-----after fitting kriging model----------
@@ -130,12 +128,9 @@ data_merge_income$fitted.s <- predict(model.lm, data_merge_income)-
 plot(data_merge_income[c("value","residuals")],
      breaks = "quantile", nbreaks = 7,
      pal=pal2, pch=16, cex=0.5)
-    
+
 # The figure reveal that although median income predictor explains a large part of variablity, the residuals
 # do not appear spatially unstructured or white noise: residuals with a similar value occur regularly
 # close to another
 
-# Variogram
-aclima_vg<-variogram(log_no2 ~ 1, data_merge_income, cloud = TRUE)
-sel<-plot(aclima_vg,digitize=TRUE)
-plot(sel,data_merge_income)
+
