@@ -42,6 +42,8 @@ alameda_block0<-subset(alameda,str_sub(NAME,13,13)==0)
 alameda_tract<-subset(alameda,str_sub(NAME,29,32) %in% c("9819","9820","9832","9900"))
 ##Note: no estimate and geometry for census tract 9980
 
+
+# DATA MAPPING: Map air pollutant coordinate to block group (WGS84->NAD83)
 ## Set up palette
 pal1 <- brewer.pal(7, "OrRd") 
 pal2 <- brewer.pal(7, "Greens")
@@ -51,12 +53,8 @@ aclima_coord<-sf::st_as_sf(aclima_remove, coords=c("lon","lat"), crs=4326)
 aclima_coord= st_set_crs(aclima_coord, 4326)
 plot(aclima_coord["value"], add=TRUE,breaks = "quantile", nbreaks = 7,
      pal=pal2, reset=FALSE, pch=16, cex=0.3)
-
-
-# DATA MAPPING: Map air pollutant coordinate to block group (WGS84->NAD83)
 alameda_4326<- st_transform(alameda,crs=4326)
 int <- sf::st_intersects(aclima_coord, alameda_4326)
-
 ##check missing value
 identical(length(int),length(unlist(int)))
 ##Note: some coordinates can not be mapped to certain block group (around 124 points,0.13%)
