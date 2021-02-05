@@ -1,0 +1,85 @@
+---
+title: "modeling code"
+author: "wenbo"
+date: "2/6/2021"
+output: pdf_document
+---
+
+Combine census tract data and use GEE
+```{r census tract}
+alameda_census<- get_acs(state = "CA", county = "Alameda", geography = "tract",
+variables = "B19013_001",geometry = TRUE)
+
+# alameda_block<- get_acs(state = "CA", county = "Alameda", geography = "tract",
+# variables = "B19013_001",geometry = TRUE)
+
+# get aclima then
+aclima_no2<-aclima[aclima$modality=="no2"&aclima$metric=="mean",]
+aclima_remove<-aclima_no2[aclima_no2$value<100&aclima_no2$value>0,]
+## check negative value
+nrow(aclima_no2[aclima_no2$value<0,])
+## check outlier
+aclima_remove<-aclima_no2[aclima_no2$value<50&aclima_no2$value>0,]
+## convert to spatial data frame
+coordinates(aclima_remove)<-c("lon","lat")
+
+pal1 <- brewer.pal(7, "OrRd") 
+pal2 <- brewer.pal(7, "Greens")
+aclima_coord<-sf::st_as_sf(aclima_remove, coords=c("lon","lat"), crs=4326)
+aclima_coord= st_set_crs(aclima_coord, 4326)
+
+plot(alameda_census[c("estimate","geometry")], breaks = "quantile", nbreaks = 7,pal=pal1,reset=FALSE)
+plot(aclima_coord["value"], add=TRUE,breaks = "quantile", nbreaks = 7,
+pal=pal2, reset=FALSE, pch=16, cex=0.3)
+alameda_4326<- st_transform(alameda_census,crs=4326)
+int <- sf::st_intersects(aclima_coord, alameda_4326)
+
+##check missing value
+identical(length(int),length(unlist(int)))
+##Note: some coordinates can not be mapped to certain block group (around 124 points,0.13%)
+## locate coordinates that failed to find their correspond block group
+ind<-sapply(int,FUN=function(x){
+  length(x)==0
+})
+aclima_coord_missing<-aclima_coord[ind,]
+aclima_merge<-aclima_coord[!ind,]
+aclima_merge$geoid <- as.character(alameda_4326$GEOID[unlist(int)])
+data_merge_income<-merge(as.data.frame(aclima_merge),
+                         as.data.frame(alameda_census),
+by.x="geoid",by.y="GEOID")
+nrow(data_merge_income) ## 94126
+table(is.na(data_merge_income$estimate))
+table(data_merge_income$geoid[is.na(data_merge_income$estimate)])
+missing_geoid<-data_merge_income$geoid[is.na(data_merge_income$estimate)]
+alameda_census%>%filter(GEOID %in% missing_geoid)%>%group_by(estimate)%>%count()
+##Note: missingness is from missing demographics estimates of acs data in the first place
+## only keep observation without estimate missingness 
+data_merge_income<-subset(data_merge_income,!is.na(estimate))
+## transform data from data frame object to sf object 
+data_merge_income<-sf::st_as_sf(data_merge_income, sf_column_name=c("geometry.x"))
+st_geometry(data_merge_income) <- "geometry.x"
+
+census_merge<-data_merge_income
+census_merge$estimate<-census_merge$estimate/1000
+# adjacent rows of same cluster
+
+geeInd_census <- geeglm(value~estimate, id=geoid, data=setorder(census_merge[sample(nrow(census_merge),10000),],geoid), family=gaussian, corstr="ind")
+summary(geeInd_census)
+
+
+
+
+#
+sigma.sq <- 5
+tau.sq <- 1
+phi <- 3/0.5
+starting <- list("phi"=phi, "sigma.sq"=5, "tau.sq"=1)
+tuning <- list("phi"=0.5, "sigma.sq"=0.5, "tau.sq"=0.5)
+priors <- list("phi.Unif"=c(3/1, 3/0.01), "sigma.sq.IG"=c(2, 5), "tau.sq.IG"=c(2, 1))
+cov.model <- "exponential"
+
+subdata<-setorder(census_merge[sample(nrow(census_merge),10000),],geoid)
+model <- spNNGP(value~estimate, data=subdata,coords=st_coordinates(subdata$geometry.x),starting=starting, method="latent", n.neighbors=10,method='latent',fit.rep=TRUE,tuning=tuning, priors=priors, cov.model=cov.model,n.samples=2000, n.omp.threads=1,return.neighbor.info = TRUE)
+summary(method)
+plot(apply(method$p.w.samples, 1, median), w)
+```
