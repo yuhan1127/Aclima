@@ -2,78 +2,9 @@
 title: "code of modeling v1"
 output: pdf_document
 ---
-
-# 1 Combine census tract level ACS data and aclima data (mainly from Yuhan's code)
-```{r}
-library(sp)
-library(lattice)
-library(data.table)
-library(gstat)
-library(tidycensus)
-library(tidyverse)
-library(sf)
-library(RColorBrewer)
-library(spNNGP)
 library(geepack)
 
-
-alameda_census<- get_acs(state = "CA", county = "Alameda", geography = "tract",
-variables = "B19013_001",geometry = TRUE)
-aclima <- read.csv("data/bq-results-20210114-120212-94gvdl4og8sd.csv")
-
-# get aclima then
-aclima_no2<-aclima[aclima$modality=="no2"&aclima$metric=="mean",]
-aclima_remove<-aclima_no2[aclima_no2$value<100&aclima_no2$value>0,]
-## check negative value
-nrow(aclima_no2[aclima_no2$value<0,])
-## check outlier
-aclima_remove<-aclima_no2[aclima_no2$value<50&aclima_no2$value>0,]
-## convert to spatial data frame
-coordinates(aclima_remove)<-c("lon","lat")
-
-pal1 <- brewer.pal(7, "OrRd") 
-pal2 <- brewer.pal(7, "Greens")
-aclima_coord<-sf::st_as_sf(aclima_remove, coords=c("lon","lat"), crs=4326)
-aclima_coord= st_set_crs(aclima_coord, 4326)
-
-plot(alameda_census[c("estimate","geometry")], breaks = "quantile", nbreaks = 7,pal=pal1,reset=FALSE)
-plot(aclima_coord["value"], add=TRUE,breaks = "quantile", nbreaks = 7,
-pal=pal2, reset=FALSE, pch=16, cex=0.3)
-alameda_4326<- st_transform(alameda_census,crs=4326)
-int <- sf::st_intersects(aclima_coord, alameda_4326)
-
-##check missing value
-identical(length(int),length(unlist(int)))
-##Note: some coordinates can not be mapped to certain block group (around 124 points,0.13%)
-## locate coordinates that failed to find their correspond block group
-ind<-sapply(int,FUN=function(x){
-  length(x)==0
-})
-aclima_coord_missing<-aclima_coord[ind,]
-aclima_merge<-aclima_coord[!ind,]
-aclima_merge$geoid <- as.character(alameda_4326$GEOID[unlist(int)])
-data_merge_income<-merge(as.data.frame(aclima_merge),
-                         as.data.frame(alameda_census),
-by.x="geoid",by.y="GEOID")
-nrow(data_merge_income) ## 94126
-table(is.na(data_merge_income$estimate))
-table(data_merge_income$geoid[is.na(data_merge_income$estimate)])
-missing_geoid<-data_merge_income$geoid[is.na(data_merge_income$estimate)]
-alameda_census%>%filter(GEOID %in% missing_geoid)%>%group_by(estimate)%>%count()
-##Note: missingness is from missing demographics estimates of acs data in the first place
-## only keep observation without estimate missingness 
-data_merge_income<-subset(data_merge_income,!is.na(estimate))
-## transform data from data frame object to sf object 
-data_merge_income<-sf::st_as_sf(data_merge_income, sf_column_name=c("geometry.x"))
-st_geometry(data_merge_income) <- "geometry.x"
-
-census_merge<-data_merge_income
-
-# change the unit of median income
-census_merge$estimate<-census_merge$estimate/1000
-```
-
-# 2 visualize zip code area with median income
+# 1 visualize zip code area with median income
 ```{r census tract}
 alameda_zip<- get_acs(geography = "zip code tabulation area",
 variables = "B19013_001",geometry = TRUE)
@@ -88,15 +19,62 @@ plot(real_alameda[,c("variable","geometry")], breaks = "quantile", nbreaks = 7,p
 plot(real_alameda[,c("geometry")])
 ```
 
-# 3 GEE with census tract level data
+# 2 GEE with random effect on county subdivision level
 ```{r}
-# Here we assume the ovservations within the same census tract is independent (corstr='ind')
-# randomly pick 10000 observations 
-geeInd_census <- geeglm(value~estimate, id=geoid, data=setorder(census_merge[sample(nrow(census_merge),10000),],geoid), family=gaussian, corstr="ind")
+## create subcounty id:  1-10 digit of GEOID
+data_merge$subcounty_id<-str_sub(data_merge$geoid,1,10)
+
+## missing value from ACS data
+data_remove<-na.omit(subset(data_merge,
+                      select=c(race_aa_per,
+                               race_asian_per,
+                               race_hisp_per,
+                               race_other_per,
+                               age_median,
+                               `edu_>high_per`,
+                               hhinc_median,
+                               unemp_per,
+                               value,
+                               subcounty_id)))
+
+data_remove2<-na.omit(subset(data_merge,
+                      select=c(race_aa_per,
+                               race_asian_per,
+                               race_hisp_per,
+                               race_other_per,
+                               age_median,
+                               `edu_>high_per`,
+                               `hhinc_>100000_per`,
+                               unemp_per,
+                               value,
+                               subcounty_id)))
+
+
+1-nrow(data_remove)/nrow(data_merge) ##2.5%
+1-nrow(data_remove2)/nrow(data_merge) ## 1.1%
+
+
+## log-transformed NO2 
+data_remove2$log_no2<-log(data_remove2$value)
+
+## Choose categorical income variable (with less missing value)
+geeInd_census <- geeglm(log_no2~
+                          race_aa_per+race_asian_per+race_hisp_per+race_other_per+
+                          age_median+
+                          `edu_>high_per`+
+                          `hhinc_>100000_per`+
+                          unemp_per,
+                    id=subcounty_id,
+                    data=data_remove2,
+                    family=gaussian,
+                    corstr="ind")
+                        
 summary(geeInd_census)
+
+
 ```
 
-# 4 spNNGP
+# 3 spNNGP
 ```{r}
 sigma.sq <- 5
 tau.sq <- 1
