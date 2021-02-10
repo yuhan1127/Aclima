@@ -1,0 +1,61 @@
+"0","data_merge$subcounty_id<-str_sub(data_merge$geoid,1,10)
+
+## missing value from ACS data
+data_remove<-na.omit(subset(data_merge,
+                      select=c(race_aa_per,
+                               race_asian_per,
+                               race_hisp_per,
+                               race_other_per,
+                               age_median,
+                               `edu_>high_per`,
+                               hhinc_median,
+                               unemp_per,
+                               value,
+                               subcounty_id)))
+"
+"2","Registered S3 methods overwritten by 'htmltools':
+  method               from         
+  print.html           tools:rstudio
+  print.shiny.tag      tools:rstudio
+  print.shiny.tag.list tools:rstudio
+"
+"0",""
+"0","data_remove2<-na.omit(subset(data_merge,"
+"0","                      select=c(race_aa_per,"
+"0","                               race_asian_per,"
+"0","                               race_hisp_per,"
+"0","                               race_other_per,"
+"0","                               age_median,"
+"0","                               `edu_>high_per`,"
+"0","                               `hhinc_>100000_per`,"
+"0","                               unemp_per,"
+"0","                               value,"
+"0","                               subcounty_id)))"
+"0",""
+"0",""
+"0","1-nrow(data_remove)/nrow(data_merge) ##2.5%"
+"1","[1]"
+"1"," 0.0253"
+"1","
+"
+"0","1-nrow(data_remove2)/nrow(data_merge) ## 1.1%"
+"1","[1]"
+"1"," 0.011"
+"1","
+"
+"0","## log-transformed NO2 "
+"0","data_merge$log_no2<-log(data_merge$value)"
+"0",""
+"0","## Choose categorical income variable (with less missing value)"
+"0","geeInd_census <- geeglm(log_no2~"
+"0","                          race_aa_per+race_asian_per+race_hisp_per+race_other_per+"
+"0","                          age_median+"
+"0","                          `edu_>high_per`+"
+"0","                          `hhinc_>100000_per`+"
+"0","                          unemp_per,"
+"0","                    id=subcounty_id,"
+"0","                    data=data_remove2,"
+"0","                    family=gaussian,"
+"0","                    corstr=""ind"")"
+"2","Error in eval(predvars, data, env) : object 'log_no2' not found
+"

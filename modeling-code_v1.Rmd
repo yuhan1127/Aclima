@@ -1,0 +1,106 @@
+---
+title: "code of modeling v1"
+output: pdf_document
+---
+
+# 1 Combine census tract level ACS data and aclima data (mainly from Yuhan's code)
+```{r}
+library(sp)
+library(lattice)
+library(data.table)
+library(gstat)
+library(tidycensus)
+library(tidyverse)
+library(sf)
+library(RColorBrewer)
+library(spNNGP)
+library(geepack)
+
+```
+
+# 2 visualize zip code area with median income
+```{r census tract}
+alameda_zip<- get_acs(geography = "zip code tabulation area",
+variables = "B19013_001",geometry = TRUE)
+zipcode<-c(94501,94502,94706,94707,94708,94709,94710,94720,94702,94703,94704,94705 ,94552 ,94546 ,94568 
+,94555 ,94536,94538 ,94539 ,94541,94542,94544 ,94545 ,94550 ,94551 ,94560 ,94601 ,94602 ,94603 ,94605 
+,94606 ,94607 ,94608 ,94609 ,94610 ,94611 ,94612 ,94613,94618 ,94619 ,94621 ,94566 ,94588 ,94577 ,94578 ,94579 ,94580 ,94586 ,94587)
+
+pal1 <- brewer.pal(7, "OrRd") 
+pal2 <- brewer.pal(7, "Greens")
+real_alameda<-alameda_zip[alameda_zip$GEOID%in%zipcode,]
+plot(real_alameda[,c("variable","geometry")], breaks = "quantile", nbreaks = 7,pal=pal1,reset=FALSE)
+plot(real_alameda[,c("geometry")])
+```
+
+# 3 GEE 
+```{r}
+## create subcounty id:  1-10 digit of GEOID
+data_merge$subcounty_id<-str_sub(data_merge$geoid,1,10)
+
+## missing value from ACS data
+data_remove<-na.omit(subset(data_merge,
+                      select=c(race_aa_per,
+                               race_asian_per,
+                               race_hisp_per,
+                               race_other_per,
+                               age_median,
+                               `edu_>high_per`,
+                               hhinc_median,
+                               unemp_per,
+                               value,
+                               subcounty_id)))
+
+data_remove2<-na.omit(subset(data_merge,
+                      select=c(race_aa_per,
+                               race_asian_per,
+                               race_hisp_per,
+                               race_other_per,
+                               age_median,
+                               `edu_>high_per`,
+                               `hhinc_>100000_per`,
+                               unemp_per,
+                               value,
+                               subcounty_id)))
+
+
+1-nrow(data_remove)/nrow(data_merge) ##2.5%
+1-nrow(data_remove2)/nrow(data_merge) ## 1.1%
+
+
+## log-transformed NO2 
+data_merge$log_no2<-log(data_merge$value)
+
+## Choose categorical income variable (with less missing value)
+geeInd_census <- geeglm(log_no2~
+                          race_aa_per+race_asian_per+race_hisp_per+race_other_per+
+                          age_median+
+                          `edu_>high_per`+
+                          `hhinc_>100000_per`+
+                          unemp_per,
+                    id=subcounty_id,
+                    data=data_remove2,
+                    family=gaussian,
+                    corstr="ind")
+                        
+summary(geeInd_census)
+
+```
+
+# 4 spNNGP
+```{r}
+sigma.sq <- 5
+tau.sq <- 1
+phi <- 3/0.5
+starting <- list("phi"=phi, "sigma.sq"=5, "tau.sq"=1)
+tuning <- list("phi"=0.5, "sigma.sq"=0.5, "tau.sq"=0.5)
+priors <- list("phi.Unif"=c(3/1, 3/0.01), "sigma.sq.IG"=c(2, 5), "tau.sq.IG"=c(2, 1))
+cov.model <- "exponential"
+
+# get a random 10000 observation from the whole dataset
+subdata<-setorder(census_merge[sample(nrow(census_merge),10000),],geoid)
+
+model <- spNNGP(value~estimate, data=subdata,coords=st_coordinates(subdata$geometry.x),starting=starting, method="latent", n.neighbors=10,method='latent',fit.rep=TRUE,tuning=tuning, priors=priors, cov.model=cov.model,n.samples=2000, n.omp.threads=1,return.neighbor.info = TRUE)
+
+summary(method)
+```
