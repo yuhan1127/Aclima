@@ -1,0 +1,26 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1612772818963.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1070393981",
+    "id" : "337CB659",
+    "lastKnownWriteTime" : 1612922175,
+    "last_content_update" : 1612922175342,
+    "path" : "~/Desktop/Aclima-1/data_merging.R",
+    "project_path" : "data_merging.R",
+    "properties" : {
+        "cursorPosition" : "54,23",
+        "scrollLine" : "0",
+        "tempName" : "Untitled1"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 4,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

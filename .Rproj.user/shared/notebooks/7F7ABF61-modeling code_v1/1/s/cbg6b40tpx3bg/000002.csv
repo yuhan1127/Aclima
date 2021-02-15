@@ -1,0 +1,13 @@
+"0","library(sp)
+library(lattice)
+library(data.table)
+library(gstat)
+library(tidycensus)
+library(tidyverse)
+library(sf)
+library(RColorBrewer)
+library(spNNGP)
+library(geepack)
+"
+"2","Error in library(geepack) : there is no package called ‘geepack’
+"

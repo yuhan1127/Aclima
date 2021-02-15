@@ -13,24 +13,25 @@ readRenviron("~/.Renviron")
 options(tigris_use_cache = TRUE)
 
 # ACLIMA DATA
-aclima<-fread("Aclima_0114.csv")
+aclima<-fread("/Users/why/Desktop/uw/course/2021 winter/Aclima/Aclima_0114.csv")
 aclima_no2<-aclima[modality=="no2"&metric=="mean"]
-aclima_remove<-aclima_no2[aclima_no2$value<100&aclima_no2$value>0,]
 
 ## check negative value
 nrow(aclima_no2[aclima_no2$value<0,])
-## check outlier
+## replace negative value with small positive value 
+## (!!!should use detection limit!!!)
+  
+## check outlier (small percentage, keep those datapoints)
 summary(aclima_no2$value)
-aclima_remove<-aclima_no2[aclima_no2$value<50&aclima_no2$value>0,]
+ 
 ## convert to spatial data frame
 coordiates(aclima_remove)<-c("lon","lat")
-## heatmap
-spplot(aclima_remove, "value", colorkey = TRUE)
 
 
 # ACS DATA
-alameda<- get_acs(state = "CA", county = "Alameda", geography = "block group",
-                  variables = "B19013_001",geometry = TRUE)
+alameda <- get_acs(geography = "block group",
+                      variables = c(med_inc = "B19013_001"),
+                      state = "CA", county = "Alameda", geometry = TRUE)
 ## check block group level range
 block<-as.numeric(str_sub(alameda$NAME,13,13))
 ## check census tract level range
